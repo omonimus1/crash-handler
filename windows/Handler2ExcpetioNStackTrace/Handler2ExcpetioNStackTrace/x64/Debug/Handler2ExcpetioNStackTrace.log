@@ -1,0 +1,23 @@
+﻿Build started 2/14/2025 2:37:59 PM.
+Logging verbosity is set to: Normal.     1>Project "C:\src\Handler2ExcpetioNStackTrace\Handler2ExcpetioNStackTrace\Handler2ExcpetioNStackTrace.vcxproj" on node 2 (Build target(s)).
+     1>PrepareForBuild:
+         Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
+       InitializeBuildStatus:
+         Creating "x64\Debug\Handler2.35a1d20b.tlog\unsuccessfulbuild" because "AlwaysCreate" was specified.
+         Touching "x64\Debug\Handler2.35a1d20b.tlog\unsuccessfulbuild".
+       ClCompile:
+         C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.42.34433\bin\HostX64\x64\CL.exe /c /IC:\src\Handler2ExcpetioNStackTrace\packages\boost.1.87.0\build\..\lib\native\include\ /ZI /JMC /nologo /W3 /WX- /diagnostics:column /sdl /Od /D _DEBUG /D _CONSOLE /D _UNICODE /D UNICODE /Gm- /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /std:c++20 /permissive- /Fo"x64\Debug\\" /Fd"x64\Debug\vc143.pdb" /external:W3 /Gd /TP /FC /errorReport:prompt Handler2ExcpetioNStackTrace.cpp
+         Handler2ExcpetioNStackTrace.cpp
+       Link:
+         C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.42.34433\bin\HostX64\x64\link.exe /ERRORREPORT:PROMPT /OUT:"C:\src\Handler2ExcpetioNStackTrace\x64\Debug\Handler2ExcpetioNStackTrace.exe" /INCREMENTAL /ILK:"x64\Debug\Handler2ExcpetioNStackTrace.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:\src\Handler2ExcpetioNStackTrace\x64\Debug\Handler2ExcpetioNStackTrace.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"C:\src\Handler2ExcpetioNStackTrace\x64\Debug\Handler2ExcpetioNStackTrace.lib" /MACHINE:X64 x64\Debug\Handler2ExcpetioNStackTrace.obj
+         Handler2ExcpetioNStackTrace.vcxproj -> C:\src\Handler2ExcpetioNStackTrace\x64\Debug\Handler2ExcpetioNStackTrace.exe
+       FinalizeBuildStatus:
+         Deleting file "x64\Debug\Handler2.35a1d20b.tlog\unsuccessfulbuild".
+         Touching "x64\Debug\Handler2.35a1d20b.tlog\Handler2ExcpetioNStackTrace.lastbuildstate".
+     1>Done Building Project "C:\src\Handler2ExcpetioNStackTrace\Handler2ExcpetioNStackTrace\Handler2ExcpetioNStackTrace.vcxproj" (Build target(s)).
+
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:01.67
