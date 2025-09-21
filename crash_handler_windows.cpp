@@ -5,6 +5,7 @@
 #include <windows.h>
 #include <dbghelp.h>  // For stack trace functionality
 #include <processthreadsapi.h>  // For SetThreadStackGuarantee
+#include <new>  // For std::set_new_handler and std::bad_alloc
 
 #pragma comment(lib, "dbghelp.lib")  // Link against dbghelp.lib for symbol resolution
 
@@ -12,17 +13,20 @@
 void CustomTerminateHandler();
 void CustomPureCallHandler();
 void CustomInvalidParameterHandler(const wchar_t* expression, const wchar_t* function, const wchar_t* file, unsigned int line, uintptr_t pReserved);
+void CustomNewHandler();
 LONG WINAPI CustomUnhandledExceptionFilter(PEXCEPTION_POINTERS pExceptionPointers);
 void TriggerPureCallHandler();
 void TriggerTerminateHandler();
 void TriggerDirectTerminate();
 void TriggerInvalidParameterHandler();
+void TriggerNewHandler();
 
 // Global variables to store previous handlers
 std::terminate_handler previousTerminateHandler = nullptr;
 LPTOP_LEVEL_EXCEPTION_FILTER previousFilter = nullptr;
 _purecall_handler previousPureCallHandler = nullptr;
 _invalid_parameter_handler previousInvalidParameterHandler = nullptr;
+std::new_handler previousNewHandler = nullptr;
 
 // Function to print stack trace with symbol information
 void PrintStackTrace() {
@@ -151,6 +155,24 @@ void CustomPureCallHandler() {
     }
 }
 
+// Custom new handler for out-of-memory situations
+void CustomNewHandler() {
+    std::wcout << L"New handler called: Out of memory!" << std::endl;
+    std::wcout << L"This occurs when operator new fails to allocate memory." << std::endl;
+
+    // Print stack trace to identify the allocation site that caused the failure
+    PrintStackTrace();
+
+    // Call previous handler if it exists, otherwise throw std::bad_alloc
+    if (previousNewHandler) {
+        previousNewHandler();
+    }
+    else {
+        std::wcout << L"No previous new handler, throwing std::bad_alloc" << std::endl;
+        throw std::bad_alloc{};
+    }
+}
+
 // Unhandled exception filter
 LONG WINAPI CustomUnhandledExceptionFilter(PEXCEPTION_POINTERS pExceptionPointers) {
     std::wcout << L"Unhandled exception filter called" << std::endl;
@@ -262,6 +284,25 @@ void TriggerInvalidParameterHandler() {
     std::wcout << L"Invalid parameter handler trigger attempt completed" << std::endl;
 }
 
+// Function to trigger new handler (out-of-memory)
+void TriggerNewHandler() {
+    std::wcout << L"Triggering new handler (out-of-memory)..." << std::endl;
+    try {
+        // Allocate large chunks of memory in a loop to exhaust available memory
+        // Note: This may take time or not trigger on systems with large/virtual memory
+        while (true) {
+            new int[100000000];  // Attempt to allocate ~400 MB each time
+        }
+    }
+    catch (const std::bad_alloc& e) {
+        std::wcout << L"Caught std::bad_alloc: " << e.what() << std::endl;
+    }
+    catch (...) {
+        std::wcout << L"Unexpected exception caught while triggering new handler" << std::endl;
+    }
+    std::wcout << L"New handler trigger attempt completed" << std::endl;
+}
+
 int main(int argc, char* argv[]) {
     // Set thread stack guarantee for exception handling
     ULONG stackSize = 65536; // 64 KB for exception handling
@@ -290,6 +331,10 @@ int main(int argc, char* argv[]) {
     previousInvalidParameterHandler = _set_invalid_parameter_handler(CustomInvalidParameterHandler);
     std::wcout << L"Invalid parameter handler registered" << std::endl;
 
+    // Set up the new handler
+    previousNewHandler = std::set_new_handler(CustomNewHandler);
+    std::wcout << L"New handler registered" << std::endl;
+
     // Set up the unhandled exception filter
     previousFilter = SetUnhandledExceptionFilter(CustomUnhandledExceptionFilter);
     std::wcout << L"Unhandled exception filter registered" << std::endl;
@@ -304,13 +349,14 @@ int main(int argc, char* argv[]) {
     }
 
     // If no valid command line argument, show menu
-    if (choice < 1 || choice > 4) {
+    if (choice < 1 || choice > 5) {
         std::wcout << L"Select the type of exception to trigger:" << std::endl;
         std::wcout << L"1: Pure call handler" << std::endl;
         std::wcout << L"2: Terminate handler (via exception)" << std::endl;
         std::wcout << L"3: Terminate handler (direct)" << std::endl;
         std::wcout << L"4: Invalid parameter handler" << std::endl;
-        std::wcout << L"Enter your choice (1, 2, 3, or 4): ";
+        std::wcout << L"5: New handler (out-of-memory)" << std::endl;
+        std::wcout << L"Enter your choice (1, 2, 3, 4, or 5): ";
         std::wcin >> choice;
     }
 
@@ -328,6 +374,9 @@ int main(int argc, char* argv[]) {
         break;
     case 4:
         TriggerInvalidParameterHandler();
+        break;
+    case 5:
+        TriggerNewHandler();
         break;
     default:
         std::wcout << L"Invalid choice. Exiting..." << std::endl;
