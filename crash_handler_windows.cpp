@@ -11,15 +11,18 @@
 // Forward declarations
 void CustomTerminateHandler();
 void CustomPureCallHandler();
+void CustomInvalidParameterHandler(const wchar_t* expression, const wchar_t* function, const wchar_t* file, unsigned int line, uintptr_t pReserved);
 LONG WINAPI CustomUnhandledExceptionFilter(PEXCEPTION_POINTERS pExceptionPointers);
 void TriggerPureCallHandler();
 void TriggerTerminateHandler();
 void TriggerDirectTerminate();
+void TriggerInvalidParameterHandler();
 
 // Global variables to store previous handlers
 std::terminate_handler previousTerminateHandler = nullptr;
 LPTOP_LEVEL_EXCEPTION_FILTER previousFilter = nullptr;
 _purecall_handler previousPureCallHandler = nullptr;
+_invalid_parameter_handler previousInvalidParameterHandler = nullptr;
 
 // Function to print stack trace with symbol information
 void PrintStackTrace() {
@@ -50,6 +53,43 @@ void PrintStackTrace() {
 
     free(symbol);
     SymCleanup(process);  // Clean up symbol handler
+}
+
+// Custom invalid parameter handler
+void CustomInvalidParameterHandler(const wchar_t* expression, const wchar_t* function, const wchar_t* file, unsigned int line, uintptr_t pReserved) {
+    std::wcout << L"Invalid parameter handler called!" << std::endl;
+    std::wcout << L"Details:" << std::endl;
+    if (expression) {
+        std::wcout << L"  Expression: " << expression << std::endl;
+    }
+    else {
+        std::wcout << L"  Expression: (unknown)" << std::endl;
+    }
+    if (function) {
+        std::wcout << L"  Function: " << function << std::endl;
+    }
+    else {
+        std::wcout << L"  Function: (unknown)" << std::endl;
+    }
+    if (file) {
+        std::wcout << L"  File: " << file << std::endl;
+    }
+    else {
+        std::wcout << L"  File: (unknown)" << std::endl;
+    }
+    std::wcout << L"  Line: " << line << std::endl;
+
+    // Print stack trace for debugging
+    PrintStackTrace();
+
+    // Call previous handler if it exists, otherwise exit
+    if (previousInvalidParameterHandler) {
+        previousInvalidParameterHandler(expression, function, file, line, pReserved);
+    }
+    else {
+        std::wcout << L"No previous invalid parameter handler, exiting with error code" << std::endl;
+        std::exit(EXIT_FAILURE);
+    }
 }
 
 // Custom terminate handler
@@ -130,19 +170,17 @@ LONG WINAPI CustomUnhandledExceptionFilter(PEXCEPTION_POINTERS pExceptionPointer
 class AbstractBase {
 public:
     AbstractBase() {
-        // Calling virtual function in constructor - this will trigger pure call handler
         std::wcout << L"AbstractBase constructor" << std::endl;
         CallPureVirtual();
     }
     virtual ~AbstractBase() {
-        // Calling virtual function in destructor - this can also trigger pure call handler
         std::wcout << L"AbstractBase destructor" << std::endl;
         CallPureVirtual();
     }
     virtual void PureVirtualFunction() = 0;
 
     void CallPureVirtual() {
-        PureVirtualFunction(); // This will trigger the pure call handler during construction/destruction
+        PureVirtualFunction();
     }
 };
 
@@ -161,13 +199,12 @@ public:
     }
 };
 
-// Alternative approach: Force pure call using vtable manipulation (but safe for fully constructed objects)
+// Alternative approach: Force pure call using vtable manipulation
 class ForceBase {
 public:
     virtual void PureFunction() = 0;
 
     void ForcePureCall() {
-        // This won't trigger pure call for fully constructed derived objects
         void** vtable = *reinterpret_cast<void***>(this);
         typedef void(*PureFuncPtr)(ForceBase*);
         PureFuncPtr pureFunc = reinterpret_cast<PureFuncPtr>(vtable[0]);
@@ -189,18 +226,14 @@ void TriggerPureCallHandler() {
     std::wcout << L"Triggering pure call handler..." << std::endl;
 
     try {
-        // Method 1: Constructor/Destructor approach - triggers pure call during construction
         std::wcout << L"Method 1: Constructor approach..." << std::endl;
         ProblematicClass* obj = new ProblematicClass();
-        // If we reach here, construction succeeded, but destructor will also trigger on delete
         delete obj;
 
-        // Method 2: Direct vtable approach (safe for fully constructed objects)
         std::wcout << L"Method 2: Direct vtable approach..." << std::endl;
         ForceDerived forced;
         ForceBase* basePtr = &forced;
-        basePtr->ForcePureCall(); // Calls overridden function, no pure call
-
+        basePtr->ForcePureCall();
     }
     catch (...) {
         std::wcout << L"Exception caught while triggering pure call handler" << std::endl;
@@ -219,6 +252,14 @@ void TriggerTerminateHandler() {
 void TriggerDirectTerminate() {
     std::wcout << L"Triggering terminate handler directly via std::terminate()..." << std::endl;
     std::terminate();
+}
+
+// Function to trigger invalid parameter handler
+void TriggerInvalidParameterHandler() {
+    std::wcout << L"Triggering invalid parameter handler..." << std::endl;
+    // Example: Passing nullptr to printf, which triggers invalid parameter
+    printf(nullptr);
+    std::wcout << L"Invalid parameter handler trigger attempt completed" << std::endl;
 }
 
 int main(int argc, char* argv[]) {
@@ -245,6 +286,10 @@ int main(int argc, char* argv[]) {
     previousPureCallHandler = _set_purecall_handler(CustomPureCallHandler);
     std::wcout << L"Pure call handler registered" << std::endl;
 
+    // Set up the invalid parameter handler
+    previousInvalidParameterHandler = _set_invalid_parameter_handler(CustomInvalidParameterHandler);
+    std::wcout << L"Invalid parameter handler registered" << std::endl;
+
     // Set up the unhandled exception filter
     previousFilter = SetUnhandledExceptionFilter(CustomUnhandledExceptionFilter);
     std::wcout << L"Unhandled exception filter registered" << std::endl;
@@ -259,13 +304,13 @@ int main(int argc, char* argv[]) {
     }
 
     // If no valid command line argument, show menu
-    if (choice < 1 || choice > 3) {
+    if (choice < 1 || choice > 4) {
         std::wcout << L"Select the type of exception to trigger:" << std::endl;
         std::wcout << L"1: Pure call handler" << std::endl;
         std::wcout << L"2: Terminate handler (via exception)" << std::endl;
         std::wcout << L"3: Terminate handler (direct)" << std::endl;
-        std::wcout << L"Enter your choice (1, 2, or 3): ";
-
+        std::wcout << L"4: Invalid parameter handler" << std::endl;
+        std::wcout << L"Enter your choice (1, 2, 3, or 4): ";
         std::wcin >> choice;
     }
 
@@ -280,6 +325,9 @@ int main(int argc, char* argv[]) {
         break;
     case 3:
         TriggerDirectTerminate();
+        break;
+    case 4:
+        TriggerInvalidParameterHandler();
         break;
     default:
         std::wcout << L"Invalid choice. Exiting..." << std::endl;
