@@ -1,11 +1,12 @@
-// Set terminate handler, unhanded exception filter, pure handler filter - in progress
 #include <iostream>
 #include <exception>
 #include <typeinfo>
 #include <cstdlib>
 #include <windows.h>
+#include <dbghelp.h>  // For stack trace functionality
 
-// unhandled exception filter, vector handler, out of proc, handler, pure call, set_terminate
+#pragma comment(lib, "dbghelp.lib")  // Link against dbghelp.lib for symbol resolution
+
 // Forward declarations
 void CustomTerminateHandler();
 void CustomPureCallHandler();
@@ -19,25 +20,52 @@ std::terminate_handler previousTerminateHandler = nullptr;
 LPTOP_LEVEL_EXCEPTION_FILTER previousFilter = nullptr;
 _purecall_handler previousPureCallHandler = nullptr;
 
-// Our custom terminate handler
+// Function to print stack trace with symbol information
+void PrintStackTrace() {
+    HANDLE process = GetCurrentProcess();
+    SymInitialize(process, NULL, TRUE);  // Initialize symbol handler
+
+    void* stack[100];
+    unsigned short frames = CaptureStackBackTrace(0, 100, stack, NULL);  // Capture stack frames
+
+    SYMBOL_INFO* symbol = (SYMBOL_INFO*)calloc(sizeof(SYMBOL_INFO) + 256 * sizeof(char), 1);
+    if (!symbol) {
+        std::wcout << L"Failed to allocate memory for symbol info" << std::endl;
+        return;
+    }
+    symbol->MaxNameLen = 255;
+    symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
+
+    std::wcout << L"Stack trace:" << std::endl;
+    for (unsigned short i = 0; i < frames; i++) {
+        if (SymFromAddr(process, (DWORD64)(stack[i]), 0, symbol)) {
+            std::wcout << L"Frame " << i << L": " << symbol->Name
+                << L" - 0x" << std::hex << symbol->Address << std::endl;
+        }
+        else {
+            std::wcout << L"Frame " << i << L": Unknown - 0x" << std::hex << stack[i] << std::endl;
+        }
+    }
+
+    free(symbol);
+    SymCleanup(process);  // Clean up symbol handler
+}
+
+// Custom terminate handler
 void CustomTerminateHandler() {
     std::wcout << L"terminate handler: called" << std::endl;
 
-    // Try to get the current exception
     try {
         std::exception_ptr eptr = std::current_exception();
         if (eptr) {
-            // We have an exception, try to rethrow it to get information
             try {
                 std::rethrow_exception(eptr);
             }
             catch (const std::exception& e) {
-                // Standard exception with what() method
                 std::wcout << L"Terminate handler: Exception type: " << typeid(e).name() << std::endl;
                 std::wcout << L"Terminate handler: Exception message: " << e.what() << std::endl;
             }
             catch (...) {
-                // Unknown exception type
                 std::wcout << L"Terminate handler: Unknown exception type" << std::endl;
             }
         }
@@ -49,30 +77,36 @@ void CustomTerminateHandler() {
         std::wcout << L"Terminate handler: Error while trying to extract exception information" << std::endl;
     }
 
-    // Call the previous terminate handler if it exists
+    // Print stack trace for debugging
+    PrintStackTrace();
+
+    // Call previous handler if it exists, otherwise exit gracefully
     if (previousTerminateHandler) {
         previousTerminateHandler();
     }
     else {
-        std::wcout << L"No previous terminate handler, calling abort()" << std::endl;
-        std::abort();
+        std::wcout << L"No previous terminate handler, exiting with error code" << std::endl;
+        std::exit(EXIT_FAILURE);
     }
 }
 
-// Our custom pure call handler
+// Custom pure call handler with debugging information
 void CustomPureCallHandler() {
-    std::wcout << L"pureCallHandler catched" << std::endl;
-
-    // Additional information can be logged here
+    std::wcout << L"pureCallHandler caught" << std::endl;
     std::wcout << L"A pure virtual function was called!" << std::endl;
+    std::wcout << L"This typically occurs when a virtual function is called during base class construction/destruction" << std::endl;
+    std::wcout << L"or when an abstract class is instantiated." << std::endl;
 
-    // Call the previous pure call handler if it exists
+    // Print stack trace to identify the cause
+    PrintStackTrace();
+
+    // Call previous handler if it exists, otherwise exit gracefully
     if (previousPureCallHandler) {
         previousPureCallHandler();
     }
     else {
-        std::wcout << L"No previous pure call handler, calling abort()" << std::endl;
-        std::abort();
+        std::wcout << L"No previous pure call handler, exiting with error code" << std::endl;
+        std::exit(EXIT_FAILURE);
     }
 }
 
@@ -85,6 +119,9 @@ LONG WINAPI CustomUnhandledExceptionFilter(PEXCEPTION_POINTERS pExceptionPointer
             << pExceptionPointers->ExceptionRecord->ExceptionCode << std::endl;
     }
 
+    // Print stack trace for debugging
+    PrintStackTrace();
+
     return EXCEPTION_EXECUTE_HANDLER;
 }
 
@@ -93,22 +130,24 @@ class AbstractBase {
 public:
     AbstractBase() {
         // Calling virtual function in constructor - this will trigger pure call handler
+        std::wcout << L"AbstractBase constructor" << std::endl;
         CallPureVirtual();
     }
     virtual ~AbstractBase() {
         // Calling virtual function in destructor - this can also trigger pure call handler
+        std::wcout << L"AbstractBase destructor" << std::endl;
         CallPureVirtual();
     }
     virtual void PureVirtualFunction() = 0;
 
     void CallPureVirtual() {
-        PureVirtualFunction(); // This will trigger the pure call handler
+        PureVirtualFunction(); // This will trigger the pure call handler during construction/destruction
     }
 };
 
 class ProblematicClass : public AbstractBase {
 public:
-    ProblematicClass() : AbstractBase() {
+    ProblematicClass() {
         std::wcout << L"ProblematicClass constructor completed" << std::endl;
     }
 
@@ -121,18 +160,18 @@ public:
     }
 };
 
-// Alternative approach: Force pure call using assembly or direct call
+// Alternative approach: Force pure call using vtable manipulation (but safe for fully constructed objects)
 class ForceBase {
 public:
     virtual void PureFunction() = 0;
 
     void ForcePureCall() {
-        // Get the vtable and call the pure virtual function directly
+        // This won't trigger pure call for fully constructed derived objects
         void** vtable = *reinterpret_cast<void***>(this);
         typedef void(*PureFuncPtr)(ForceBase*);
         PureFuncPtr pureFunc = reinterpret_cast<PureFuncPtr>(vtable[0]);
         if (pureFunc) {
-            pureFunc(this); // This should trigger pure call handler
+            pureFunc(this);
         }
     }
 };
@@ -149,16 +188,17 @@ void TriggerPureCallHandler() {
     std::wcout << L"Triggering pure call handler..." << std::endl;
 
     try {
-        // Method 1: Constructor/Destructor approach
+        // Method 1: Constructor/Destructor approach - triggers pure call during construction
         std::wcout << L"Method 1: Constructor approach..." << std::endl;
         ProblematicClass* obj = new ProblematicClass();
-        delete obj; // Destructor may also trigger it
+        // If we reach here, construction succeeded, but destructor will also trigger on delete
+        delete obj;
 
-        // Method 2: Direct vtable manipulation
+        // Method 2: Direct vtable approach (safe for fully constructed objects)
         std::wcout << L"Method 2: Direct vtable approach..." << std::endl;
         ForceDerived forced;
         ForceBase* basePtr = &forced;
-        basePtr->ForcePureCall();
+        basePtr->ForcePureCall(); // Calls overridden function, no pure call
 
     }
     catch (...) {
@@ -202,7 +242,6 @@ int main(int argc, char* argv[]) {
     // Check if command line argument was provided
     int choice = 0;
     if (argc > 1) {
-        // Parse command line argument
         choice = std::atoi(argv[1]);
     }
 
@@ -234,7 +273,6 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // This code will likely never be reached due to handlers calling abort()
-    std::wcout << L"Program completed normally (this should rarely be seen)" << std::endl;
+    std::wcout << L"Program completed normally" << std::endl;
     return 0;
 }
