@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <windows.h>
 #include <dbghelp.h>  // For stack trace functionality
+#include <processthreadsapi.h>  // For SetThreadStackGuarantee
 
 #pragma comment(lib, "dbghelp.lib")  // Link against dbghelp.lib for symbol resolution
 
@@ -70,7 +71,7 @@ void CustomTerminateHandler() {
             }
         }
         else {
-            std::wcout << L" Terminate handler: No current exception" << std::endl;
+            std::wcout << L"Terminate handler: No current exception" << std::endl;
         }
     }
     catch (...) {
@@ -221,7 +222,19 @@ void TriggerDirectTerminate() {
 }
 
 int main(int argc, char* argv[]) {
-    // Register all exception handlers first
+    // Set thread stack guarantee for exception handling
+    ULONG stackSize = 65536; // 64 KB for exception handling
+    std::wcout << L"Setting thread stack guarantee to " << stackSize << L" bytes..." << std::endl;
+    if (SetThreadStackGuarantee(&stackSize)) {
+        std::wcout << L"Thread stack guarantee set successfully. Previous size: "
+            << stackSize << L" bytes" << std::endl;
+    }
+    else {
+        std::wcout << L"Failed to set thread stack guarantee. Error code: "
+            << GetLastError() << std::endl;
+    }
+
+    // Register all exception handlers
     std::wcout << L"Registering exception handlers..." << std::endl;
 
     // Set up the terminate handler
